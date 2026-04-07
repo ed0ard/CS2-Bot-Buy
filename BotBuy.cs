@@ -1,4 +1,4 @@
-﻿using CounterStrikeSharp.API;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Utils;
@@ -12,7 +12,7 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.0";
+    public override string ModuleVersion     => "1.0.1";
     public override string ModuleAuthor      => "ed0ard";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
@@ -191,7 +191,6 @@ public sealed class BotBuyPatch : BasePlugin
                 else if (roll < 0.6f) Swap(p, "weapon_p90", "weapon_ump45");
             }
         });
-
         // Swap XM1014
         AddTimer(0.4f, () =>
         {
@@ -215,6 +214,41 @@ public sealed class BotBuyPatch : BasePlugin
                 else if (p.Team == CsTeam.Terrorist && roll < 0.65f)
                 {
                     Swap(p, "weapon_xm1014", "weapon_sawedoff");
+                }
+            }
+        });
+        // Swap SSG08
+        AddTimer(0.4f, () =>
+        {
+            foreach (var p in allPlayers)
+            {
+                var pawn = p.PlayerPawn.Value;
+                if (pawn == null || !pawn.IsValid || pawn.WeaponServices == null) continue;
+
+                var weapon = pawn.WeaponServices.ActiveWeapon.Value;
+                if (weapon == null || weapon.DesignerName != "weapon_ssg08") continue;
+
+                float roll = Random.Shared.NextSingle();
+
+                if (roll < 0.15f)
+                {
+                    if (p.Team == CsTeam.CounterTerrorist)
+                    {
+                        Refund(p, "weapon_usp_silencer");
+                        Refund(p, "weapon_hkp2000");
+                    }
+                    else
+                    {
+                        Refund(p, "weapon_glock");
+                    }
+                    Swap(p, "weapon_ssg08", "weapon_deagle");
+                }
+                else if (roll < 0.30f)
+                {
+                    if (p.Team == CsTeam.Terrorist)
+                        Swap(p, "weapon_ssg08", "weapon_mac10");
+                    else
+                        Swap(p, "weapon_ssg08", "weapon_mp9");
                 }
             }
         });
