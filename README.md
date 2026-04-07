@@ -1,5 +1,21 @@
 # CS2-Bot-Buy
 CS2-Smarter-Bot is a plugin based on CounterStrikeSharp that allows bots to buy everything and overhauls their economy logic.
 
+## Features
+1. Allow bots to purchase all weapons, including armor and defuse kits.
+
+2. Remove the restriction preventing bots from buying in the first round of each half (including overtime).
+
+3. Enable bots to drop weapons for teammates with less than $2800 when they have sufficient money.
+
+4. Overhaul bots’ economy management strategy.
+
+## Installation
+1. Download the latest BotBuy.zip from Releases
+
+2. Extract the folder and upload it to game/csgo/addons/counterstrikesharp/plugins on your server
+
+3. Restart your server
+
 ## Credits
 Inspired by [droyer57](https://github.com/droyer57)
