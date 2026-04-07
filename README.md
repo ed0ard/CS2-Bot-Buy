@@ -17,5 +17,6 @@ CS2-Smarter-Bot is a plugin based on CounterStrikeSharp that allows bots to buy 
 
 3. Restart your server
 
+(**Tip: Works better when `bot_eco_limit` is set to 2800**)
 ## Credits
 Inspired by [droyer57](https://github.com/droyer57)
