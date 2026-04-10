@@ -455,7 +455,7 @@ public sealed class BotBuyPatch : BasePlugin
                         Utilities.SetStateChanged(rich, "CCSPlayerController", "m_pInGameMoneyServices");
                     }
 
-                    Server.PrintToChatAll($"{ChatColors.Green}{rich.PlayerName}{ChatColors.Yellow}: {poorPlayer.PlayerName}, I dropped a weapon forya");
+                    Server.PrintToChatAll($"{ChatColors.Green}{rich.PlayerName}{ChatColors.Yellow}: {poorPlayer.PlayerName}, I dropped a weapon for ya");
                 }
             }
         });
