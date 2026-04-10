@@ -1,5 +1,5 @@
 # CS2-Bot-Buy
-CS2-Smarter-Bot is a plugin based on CounterStrikeSharp that allows bots to buy everything and overhauls their economy logic.
+CS2-Bot-Buy is a plugin based on CounterStrikeSharp that allows bots to buy everything and overhauls their economy logic.
 
 ## Features
 1. Allow bots to purchase all weapons, including armor and defuse kits.
