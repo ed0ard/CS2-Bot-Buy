@@ -11,7 +11,7 @@ CS2-Bot-Buy is a plugin based on CounterStrikeSharp that allows bots to buy ever
 4. Overhaul bots’ economy management strategy.
 
 ## Installation
-1. Download the latest BotBuy.zip from Releases
+1. Download the latest BotBuy.zip from [Releases](https://github.com/ed0ard/CS2-Bot-Buy/releases)
 
 2. Extract the folder and upload it to game/csgo/addons/counterstrikesharp/plugins on your server
 
