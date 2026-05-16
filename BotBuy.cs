@@ -12,7 +12,7 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.7";
+    public override string ModuleVersion     => "1.0.8";
     public override string ModuleAuthor      => "ed0ard";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
@@ -326,7 +326,7 @@ public sealed class BotBuyPatch : BasePlugin
             }
         });
         // Buy Defuser
-        AddTimer(2.0f, () =>
+        AddTimer(3.0f, () =>
         {
             foreach (var p in allCT)
             {
@@ -460,7 +460,7 @@ public sealed class BotBuyPatch : BasePlugin
             }
         });
         // Drop Weapons
-        AddTimer(3.0f, () =>
+        AddTimer(2.0f, () =>
         {
             if (!IsFirstRoundOfHalf())  
             {
@@ -476,7 +476,7 @@ public sealed class BotBuyPatch : BasePlugin
 
                     var giftedPoor = new HashSet<CCSPlayerController>();
 
-                    var shuffledPoor = poor.OrderBy(_ => Random.Shared.Next()).ToList();
+                    var shuffledPoor = poor.Where(p => !HasPrimaryWeapon(p)).OrderBy(_ => Random.Shared.Next()).ToList();
                     int poorIndex = 0;
 
                     foreach (var rich in richBots)
@@ -513,6 +513,46 @@ public sealed class BotBuyPatch : BasePlugin
                             given++;
                         }
                     }
+                }
+            }
+        });
+        // Armor Gift Cycle: richest non-poor bot buys armor for a random unarmored teammate
+        AddTimer(2.5f, () =>
+        {
+            foreach (var team in new[] { CsTeam.CounterTerrorist, CsTeam.Terrorist })
+            {
+                _poorPlayersByTeam.TryGetValue(team, out var poor);
+                var poorSet = new HashSet<CCSPlayerController>(poor ?? new List<CCSPlayerController>());
+
+                while (true)
+                {
+                    var needArmor = allPlayers
+                        .Where(p => p.IsValid && p.IsBot && p.Team == team
+                            && HasPrimaryWeapon(p)
+                            && (p.PlayerPawn.Value?.ArmorValue ?? 1) == 0)
+                        .ToList();
+
+                    if (needArmor.Count == 0) break;
+
+                    var buyer = allPlayers
+                        .Where(p => p.IsValid && p.IsBot && p.Team == team
+                            && !poorSet.Contains(p)
+                            && p.InGameMoneyServices?.Account >= 650)
+                        .OrderByDescending(p => p.InGameMoneyServices!.Account)
+                        .FirstOrDefault();
+                    // No one has enough money anymore
+                    if (buyer == null) break;
+
+                    var target = needArmor[Random.Shared.Next(needArmor.Count)];
+                    if (!target.IsValid) continue;
+
+                    int buyerMoney = buyer.InGameMoneyServices!.Account;
+                    string item = buyerMoney >= 1000 ? "item_assaultsuit" : "item_kevlar";
+                    int price   = buyerMoney >= 1000 ? 1000 : 650;
+
+                    target.GiveNamedItem(item);
+                    buyer.InGameMoneyServices.Account -= price;
+                    Utilities.SetStateChanged(buyer, "CCSPlayerController", "m_pInGameMoneyServices");
                 }
             }
         });
