@@ -12,7 +12,7 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.8";
+    public override string ModuleVersion     => "1.0.9";
     public override string ModuleAuthor      => "ed0ard";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
@@ -509,7 +509,8 @@ public sealed class BotBuyPatch : BasePlugin
                             if (rich.InGameMoneyServices.Account < 0) rich.InGameMoneyServices.Account = 0;
                             Utilities.SetStateChanged(rich, "CCSPlayerController", "m_pInGameMoneyServices");
 
-                            Server.PrintToChatAll($"{ChatColors.Green}{rich.PlayerName}{ChatColors.Yellow}: {poorPlayer.PlayerName}, I dropped a weapon for ya");
+                            foreach (var teammate in allPlayers.Where(p => p.IsValid && p.Team == team))
+                                teammate.PrintToChat($"{ChatColors.Green}{rich.PlayerName}{ChatColors.Yellow}: {poorPlayer.PlayerName}, I dropped a weapon for ya");
                             given++;
                         }
                     }
@@ -547,6 +548,8 @@ public sealed class BotBuyPatch : BasePlugin
                     if (!target.IsValid) continue;
 
                     int buyerMoney = buyer.InGameMoneyServices!.Account;
+                    // Terrorist bots only buy full armor
+                    if (team == CsTeam.Terrorist && buyerMoney < 1000) break;
                     string item = buyerMoney >= 1000 ? "item_assaultsuit" : "item_kevlar";
                     int price   = buyerMoney >= 1000 ? 1000 : 650;
 
