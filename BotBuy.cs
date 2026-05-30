@@ -1,9 +1,11 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
+using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Timers;
+using BotHiderApi;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -24,12 +26,31 @@ public sealed class BotBuyPatch : BasePlugin
     private Dictionary<int, List<string>> _prevWeapons = new();
     private Dictionary<int, int> _prevMoney = new();
     private Dictionary<int, int> _prevArmor = new();
+
+    // BotHider clears m_bFakePlayer, so disguised bots read IsBot=false.
+    // Optional dependency: resolved in OnAllPluginsLoaded, null if not installed.
+    private static readonly PluginCapability<IBotHiderApi> _botHiderCapability =
+        new("bothider:api");
+    private IBotHiderApi? _botHiderApi;
+
+    // True for engine bots and BotHider-disguised bots alike.
+    private bool IsBotPlayer(CCSPlayerController? c)
+        => c != null && (c.IsBot || (_botHiderApi?.IsManagedBot(c.Slot) ?? false));
+
+    public override void OnAllPluginsLoaded(bool hotReload)
+    {
+        try { _botHiderApi = _botHiderCapability.Get(); }
+        catch { _botHiderApi = null; }
+        Server.PrintToConsole(_botHiderApi != null
+            ? "[BotBuyPatch] BotHider API resolved (disguised bots supported)"
+            : "[BotBuyPatch] BotHider API not present");
+    }
 //----------------------------------------------------------------------------------------------
     [GameEventHandler]
     public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
         var player = @event.Userid;
-        if (player != null && player.IsBot) GetBotIndex(player);
+        if (player != null && IsBotPlayer(player)) GetBotIndex(player);
         return HookResult.Continue;
     }
 
@@ -45,7 +66,7 @@ public sealed class BotBuyPatch : BasePlugin
     public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
         var player = @event.Userid;
-        if (player != null && player.IsValid && player.IsBot)
+        if (player != null && player.IsValid && IsBotPlayer(player))
         {
             ClearPreviousInventory(player);
         }
@@ -80,12 +101,12 @@ public sealed class BotBuyPatch : BasePlugin
             if (player.Team == CsTeam.CounterTerrorist)
             {
                 allCT.Add(player);
-                if (player.IsBot) ctBots.Add(player);
+                if (IsBotPlayer(player)) ctBots.Add(player);
             }
             else if (player.Team == CsTeam.Terrorist)
             {
                 allT.Add(player);
-                if (player.IsBot) tBots.Add(player);
+                if (IsBotPlayer(player)) tBots.Add(player);
             }
         }
         // Drop Weapons
@@ -101,7 +122,7 @@ public sealed class BotBuyPatch : BasePlugin
             return HookResult.Continue;
         }
         // Swap HKP2000
-        foreach (var player in allPlayers.Where(p => p.IsValid && p.IsBot))
+        foreach (var player in allPlayers.Where(p => p.IsValid && IsBotPlayer(p)))
         {
             // Swap HKP2000
             if (Random.Shared.NextSingle() < 0.8f)
@@ -151,7 +172,7 @@ public sealed class BotBuyPatch : BasePlugin
             }
         });
         // Don't buy if we have scar20/g3sg1
-        foreach (var player in allPlayers.Where(p => p.IsValid && p.IsBot))
+        foreach (var player in allPlayers.Where(p => p.IsValid && IsBotPlayer(p)))
         {
             var pawn = player.PlayerPawn.Value;
             if (pawn == null || !pawn.IsValid || pawn.WeaponServices == null) continue;
@@ -180,7 +201,7 @@ public sealed class BotBuyPatch : BasePlugin
             });
         }
         // Swap AUG
-        foreach (var player in allPlayers.Where(p => p.IsValid && p.IsBot))
+        foreach (var player in allPlayers.Where(p => p.IsValid && IsBotPlayer(p)))
         {
             var copyPlayer = player;
             float rand = Random.Shared.NextSingle();
@@ -332,7 +353,7 @@ public sealed class BotBuyPatch : BasePlugin
 
             foreach (var p in allPlayers)
             {
-                if (!p.IsValid || !p.IsBot) continue;
+                if (!p.IsValid || !IsBotPlayer(p)) continue;
                 if (p.InGameMoneyServices == null) continue;
 
                 var pawn = p.PlayerPawn.Value;
@@ -524,7 +545,7 @@ public sealed class BotBuyPatch : BasePlugin
                         poor = new List<CCSPlayerController>();
                     poor = poor.Where(p => p.IsValid && p.InGameMoneyServices != null).ToList();
 
-                    var richBots = allPlayers.Where(p => p.IsValid && p.Team == team && p.IsBot && p.InGameMoneyServices?.Account >= 2900).ToList();
+                    var richBots = allPlayers.Where(p => p.IsValid && p.Team == team && IsBotPlayer(p) && p.InGameMoneyServices?.Account >= 2900).ToList();
 
                     if (poor.Count == 0 || richBots.Count == 0) continue;
 
@@ -582,7 +603,7 @@ public sealed class BotBuyPatch : BasePlugin
                 while (true)
                 {
                     var needArmor = allPlayers
-                        .Where(p => p.IsValid && p.IsBot && p.Team == team
+                        .Where(p => p.IsValid && IsBotPlayer(p) && p.Team == team
                             && HasPrimaryWeapon(p)
                             && (p.PlayerPawn.Value?.ArmorValue ?? 1) == 0)
                         .ToList();
@@ -590,7 +611,7 @@ public sealed class BotBuyPatch : BasePlugin
                     if (needArmor.Count == 0) break;
 
                     var buyer = allPlayers
-                        .Where(p => p.IsValid && p.IsBot && p.Team == team
+                        .Where(p => p.IsValid && IsBotPlayer(p) && p.Team == team
                             && !poorSet.Contains(p)
                             && p.InGameMoneyServices?.Account >= 650)
                         .OrderByDescending(p => p.InGameMoneyServices!.Account)
@@ -637,7 +658,7 @@ public sealed class BotBuyPatch : BasePlugin
 
         foreach (var player in Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller"))
         {
-            if (!player.IsValid || !player.IsBot)
+            if (!player.IsValid || !IsBotPlayer(player))
                 continue;
 
             var pawn = player.PlayerPawn.Value;
@@ -707,7 +728,7 @@ public sealed class BotBuyPatch : BasePlugin
     // Buy rifle by budget ladder
     private void BuyRifleByBudget(CCSPlayerController player, string preferred)
     {
-        if (!player.IsValid || !player.IsBot) return;
+        if (!player.IsValid || !IsBotPlayer(player)) return;
 
         string[] ladder;
         if (player.Team == CsTeam.Terrorist)
@@ -726,7 +747,7 @@ public sealed class BotBuyPatch : BasePlugin
 //----------------------------------------------------------------------------------------------
     private bool Buy(CCSPlayerController player, string itemName)
     {
-        if (!player.IsValid || !player.IsBot || player.InGameMoneyServices == null)
+        if (!player.IsValid || !IsBotPlayer(player) || player.InGameMoneyServices == null)
             return false;
 
         var pawn = player.PlayerPawn.Value;
@@ -807,7 +828,7 @@ public sealed class BotBuyPatch : BasePlugin
 
     private bool Refund(CCSPlayerController player, string itemName)
     {
-        if (!player.IsValid || !player.IsBot || player.InGameMoneyServices == null)
+        if (!player.IsValid || !IsBotPlayer(player) || player.InGameMoneyServices == null)
         return false;
 
         var pawn = player.PlayerPawn.Value;
@@ -911,7 +932,7 @@ public sealed class BotBuyPatch : BasePlugin
         if (IsFirstRoundOfHalf()) 
             return true;
 
-        if (!player.IsValid || !player.IsBot)
+        if (!player.IsValid || !IsBotPlayer(player))
             return false;
 
         // Check refund restrictions
@@ -921,7 +942,7 @@ public sealed class BotBuyPatch : BasePlugin
 
     private bool Swap(CCSPlayerController player, string oldItem, string newItem)
     {
-        if (!player.IsValid || !player.IsBot || player.InGameMoneyServices == null)
+        if (!player.IsValid || !IsBotPlayer(player) || player.InGameMoneyServices == null)
             return false;
 
         var pawn = player.PlayerPawn.Value;
@@ -994,7 +1015,7 @@ public sealed class BotBuyPatch : BasePlugin
 
     private int GetBotIndex(CCSPlayerController player)
     {
-        if (!player.IsValid || !player.IsBot) return -1;
+        if (!player.IsValid || !IsBotPlayer(player)) return -1;
         int userId = player.UserId ?? -1;
         if (userId == -1) return -1;
 
@@ -1030,7 +1051,7 @@ public sealed class BotBuyPatch : BasePlugin
 
         foreach (var player in Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller"))
         {
-            if (!player.IsValid || !player.IsBot) continue;
+            if (!player.IsValid || !IsBotPlayer(player)) continue;
             int idx = GetBotIndex(player);
             if (idx == -1) continue;
 
@@ -1061,7 +1082,7 @@ public sealed class BotBuyPatch : BasePlugin
 
     private void ClearPreviousInventory(CCSPlayerController player)
     {
-        if (!player.IsValid || !player.IsBot)
+        if (!player.IsValid || !IsBotPlayer(player))
             return;
 
         int idx = GetBotIndex(player);
@@ -1077,7 +1098,7 @@ public sealed class BotBuyPatch : BasePlugin
         int money = 0;
         int armor = 0;
 
-        if (!player.IsValid || !player.IsBot) return (weapons, money, armor);
+        if (!player.IsValid || !IsBotPlayer(player)) return (weapons, money, armor);
         int idx = GetBotIndex(player);
         if (idx == -1) return (weapons, money, armor);
 
@@ -1108,7 +1129,7 @@ public sealed class BotBuyPatch : BasePlugin
         int money = 0;
         int armor = 0;
 
-        if (!player.IsValid || !player.IsBot) return (weapons, money, armor);
+        if (!player.IsValid || !IsBotPlayer(player)) return (weapons, money, armor);
         int idx = GetBotIndex(player);
         if (idx == -1) return (weapons, money, armor);
 

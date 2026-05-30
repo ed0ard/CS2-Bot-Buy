@@ -8,6 +8,9 @@
 
   <ItemGroup>
     <PackageReference Include="CounterStrikeSharp.API" Version="1.0.367" />
+    <Reference Include="BotHiderApi">
+      <HintPath>libs/BotHiderApi.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>
