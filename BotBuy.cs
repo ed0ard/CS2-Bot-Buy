@@ -12,7 +12,7 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.10";
+    public override string ModuleVersion     => "1.0.11";
     public override string ModuleAuthor      => "ed0ard";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
@@ -263,7 +263,7 @@ public sealed class BotBuyPatch : BasePlugin
 
                 float roll = Random.Shared.NextSingle();
 
-                if (roll < 0.15f)
+                if (roll < 0.05f)
                 {
                     if (p.Team == CsTeam.CounterTerrorist)
                     {
@@ -276,7 +276,7 @@ public sealed class BotBuyPatch : BasePlugin
                     }
                     Swap(p, "weapon_ssg08", "weapon_deagle");
                 }
-                else if (roll < 0.30f)
+                else if (roll < 0.45f)
                 {
                     if (p.Team == CsTeam.Terrorist)
                         Swap(p, "weapon_ssg08", "weapon_mac10");
