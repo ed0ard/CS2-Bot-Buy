@@ -12,7 +12,7 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.11";
+    public override string ModuleVersion     => "1.0.12";
     public override string ModuleAuthor      => "ed0ard";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
@@ -812,6 +812,10 @@ public sealed class BotBuyPatch : BasePlugin
         }
 
         player.InGameMoneyServices.Account += price;
+        // Cap at mp_maxmoney
+        int maxMoney = ConVar.Find("mp_maxmoney")?.GetPrimitiveValue<int>() ?? 16000;
+        if (player.InGameMoneyServices.Account > maxMoney)
+            player.InGameMoneyServices.Account = maxMoney;
         Utilities.SetStateChanged(player, "CCSPlayerController", "m_pInGameMoneyServices");
 
         return true;
