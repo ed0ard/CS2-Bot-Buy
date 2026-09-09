@@ -1,13 +1,33 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <RootNamespace>BotBuyPatch</RootNamespace>
+    <AssemblyName>BotBuy</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.367" />
+    <!-- shared/ sits next to this csproj; do not compile ABI sources into BotBuy.dll. -->
+    <Compile Remove="shared/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.373" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" GeneratePathProperty="true" />
+    <ProjectReference Include="shared/BotChatApi/BotChatApi.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="lang/*.yml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="$(PkgYamlDotNet)/lib/$(TargetFramework)/YamlDotNet.dll"
+          Link="YamlDotNet.dll"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

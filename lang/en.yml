@@ -1,0 +1,7 @@
+# {other} is the teammate receiving the drop; {self} is the speaker.
+drop_weapon:
+  - "take it, {other}"
+  - "dropping you, {other}"
+  - "here's a gun, {other}"
+  - "extra eco for you, {other}"
+  - "you're gonna need this, {other}"

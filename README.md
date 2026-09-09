@@ -10,6 +10,10 @@ CS2-Bot-Buy is a plugin based on CounterStrikeSharp that allows bots to buy ever
 
 4. Overhaul bots’ economy management strategy.
 
+5. Team-wide economy classification (full buy / force / eco / save) instead of per-bot money checks.
+
+6. Optional drop-chat lines when a bot gives a gun to a **human** teammate. Bot-to-bot drops stay silent. BotChat is optional: if the BotChat plugin is loaded, lines go through `botchat:api`; otherwise they fall back to `PrintToChatAll`.
+
 ## Installation
 1. Download the latest BotBuy.zip from [Releases](https://github.com/ed0ard/CS2-Bot-Buy/releases)
 
