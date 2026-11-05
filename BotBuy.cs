@@ -505,7 +505,17 @@ public sealed class BotBuyPatch : BasePlugin
                             string gun = team == CsTeam.CounterTerrorist
                                 ? (Random.Shared.Next(2) == 0 ? "weapon_m4a1_silencer" : "weapon_m4a1")
                                 : "weapon_ak47";
-                            poorPlayer.GiveNamedItem(gun);
+                            var weapon = poorPlayer.GiveNamedItem<CCSWeaponBase>(gun);
+                            if (weapon == null || !weapon.IsValid) continue;
+
+                            ulong donorId = rich.SteamID;
+                            if (donorId != 0 && !CoreConfig.FollowCS2ServerGuidelines)
+                            {
+                                weapon.OriginalOwnerXuidLow = (uint)donorId;
+                                weapon.OriginalOwnerXuidHigh = (uint)(donorId >> 32);
+                                Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
+                                Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
+                            }
                             giftedPoor.Add(poorPlayer);
 
                             rich.InGameMoneyServices.Account -= price;
