@@ -26,6 +26,34 @@ public sealed class BotBuyPatch : BasePlugin
     private Dictionary<int, int> _prevArmor = new();
 //----------------------------------------------------------------------------------------------
     [GameEventHandler]
+    public HookResult OnItemPurchase(EventItemPurchase @event, GameEventInfo info)
+    {
+        var player = @event.Userid;
+        if (player == null || !player.IsValid || !player.IsBot ||
+            player.SteamID == 0 || CoreConfig.FollowCS2ServerGuidelines)
+            return HookResult.Continue;
+
+        var weapons = player.PlayerPawn.Value?.WeaponServices?.MyWeapons;
+        if (weapons == null) return HookResult.Continue;
+
+        string weaponName = @event.Weapon.StartsWith("weapon_")
+            ? @event.Weapon : "weapon_" + @event.Weapon;
+        foreach (var handle in weapons)
+        {
+            var weapon = handle.Value;
+            if (weapon == null || !weapon.IsValid || weapon.DesignerName != weaponName) continue;
+
+            var csWeapon = weapon.As<CCSWeaponBase>();
+            // Do not claim a previously owned weapon when handling native purchases.
+            if (csWeapon.PrevOwner.IsValid || csWeapon.OriginalOwnerXuidLow != 0 ||
+                csWeapon.OriginalOwnerXuidHigh != 0) continue;
+
+            SetWeaponOriginalOwner(csWeapon, player);
+        }
+        return HookResult.Continue;
+    }
+
+    [GameEventHandler]
     public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
     {
         var player = @event.Userid;
@@ -508,14 +536,7 @@ public sealed class BotBuyPatch : BasePlugin
                             var weapon = poorPlayer.GiveNamedItem<CCSWeaponBase>(gun);
                             if (weapon == null || !weapon.IsValid) continue;
 
-                            ulong donorId = rich.SteamID;
-                            if (donorId != 0 && !CoreConfig.FollowCS2ServerGuidelines)
-                            {
-                                weapon.OriginalOwnerXuidLow = (uint)donorId;
-                                weapon.OriginalOwnerXuidHigh = (uint)(donorId >> 32);
-                                Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
-                                Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
-                            }
+                            SetWeaponOriginalOwner(weapon, rich);
                             giftedPoor.Add(poorPlayer);
 
                             rich.InGameMoneyServices.Account -= price;
@@ -648,6 +669,17 @@ public sealed class BotBuyPatch : BasePlugin
     }
 
 //----------------------------------------------------------------------------------------------
+    private static void SetWeaponOriginalOwner(CCSWeaponBase weapon, CCSPlayerController owner)
+    {
+        ulong ownerId = owner.SteamID;
+        if (ownerId == 0 || CoreConfig.FollowCS2ServerGuidelines) return;
+
+        weapon.OriginalOwnerXuidLow = (uint)ownerId;
+        weapon.OriginalOwnerXuidHigh = (uint)(ownerId >> 32);
+        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
+        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
+    }
+
     private bool Buy(CCSPlayerController player, string itemName)
     {
         if (!player.IsValid || !player.IsBot || player.InGameMoneyServices == null)
@@ -721,7 +753,16 @@ public sealed class BotBuyPatch : BasePlugin
         if (money < price)
             return false;
 
-        player.GiveNamedItem(itemName);
+        if (itemName.StartsWith("weapon_"))
+        {
+            var weapon = player.GiveNamedItem<CCSWeaponBase>(itemName);
+            if (weapon == null || !weapon.IsValid) return false;
+            SetWeaponOriginalOwner(weapon, player);
+        }
+        else
+        {
+            player.GiveNamedItem(itemName);
+        }
 
         player.InGameMoneyServices.Account -= price;
         Utilities.SetStateChanged(player, "CCSPlayerController", "m_pInGameMoneyServices");
