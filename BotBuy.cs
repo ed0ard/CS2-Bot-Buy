@@ -12,7 +12,7 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.15";
+    public override string ModuleVersion     => "1.0.16";
     public override string ModuleAuthor      => "ed0ard & XBribo";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
@@ -123,8 +123,8 @@ public sealed class BotBuyPatch : BasePlugin
         _poorPlayersByTeam[CsTeam.CounterTerrorist] = poorCT;
         _poorPlayersByTeam[CsTeam.Terrorist] = poorT;
 
-        ConVar? botLoadout = ConVar.Find("bot_loadout");
-        if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.StringValue))
+        ConVar<string>? botLoadout = ConVar<string>.Find("bot_loadout");
+        if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.Value))
         {
             return HookResult.Continue;
         }
@@ -282,7 +282,7 @@ public sealed class BotBuyPatch : BasePlugin
         // Swap SSG08
         AddTimer(0.4f, () =>
         {
-            if (ConVar.Find("sv_gravity")?.GetPrimitiveValue<float>() == 230f) return;
+            if (ConVar<float>.Find("sv_gravity")?.Value == 230f) return;
             foreach (var p in allPlayers)
             {
                 if (!p.IsValid) continue; // controller captured at round_start may be gone (bot kicked / player left)
@@ -599,14 +599,14 @@ public sealed class BotBuyPatch : BasePlugin
     [GameEventHandler]
     public HookResult OnRoundFreezeEnd(EventRoundFreezeEnd @event, GameEventInfo info)
     {
-        ConVar? botLoadout = ConVar.Find("bot_loadout");
-        if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.StringValue))
+        ConVar<string>? botLoadout = ConVar<string>.Find("bot_loadout");
+        if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.Value))
         {
             return HookResult.Continue;
         }
 
         // Don't save money in the last round of each half
-        var ecoLimitCvar = ConVar.Find("bot_eco_limit");
+        var ecoLimitCvar = ConVar<int>.Find("bot_eco_limit");
         if (ecoLimitCvar != null)
         {
             if (IsSecondToLastRoundOfHalf())
@@ -867,7 +867,7 @@ public sealed class BotBuyPatch : BasePlugin
 
         player.InGameMoneyServices.Account += price;
         // Cap at mp_maxmoney
-        int maxMoney = ConVar.Find("mp_maxmoney")?.GetPrimitiveValue<int>() ?? 16000;
+        int maxMoney = ConVar<int>.Find("mp_maxmoney")?.Value ?? 16000;
         if (player.InGameMoneyServices.Account > maxMoney)
             player.InGameMoneyServices.Account = maxMoney;
         Utilities.SetStateChanged(player, "CCSPlayerController", "m_pInGameMoneyServices");
@@ -920,8 +920,8 @@ public sealed class BotBuyPatch : BasePlugin
                 return false;
 
             int played = gameRules.TotalRoundsPlayed;
-            int maxRounds = ConVar.Find("mp_maxrounds")?.GetPrimitiveValue<int>() ?? 24;
-            int otMaxRounds = ConVar.Find("mp_overtime_maxrounds")?.GetPrimitiveValue<int>() ?? 6;
+            int maxRounds = ConVar<int>.Find("mp_maxrounds")?.Value ?? 24;
+            int otMaxRounds = ConVar<int>.Find("mp_overtime_maxrounds")?.Value ?? 6;
 
             if (maxRounds <= 0) maxRounds = 24;
             if (otMaxRounds <= 0) otMaxRounds = 6;
@@ -952,7 +952,7 @@ public sealed class BotBuyPatch : BasePlugin
                 return false;
 
             int played = gameRules.TotalRoundsPlayed;
-            int maxRounds = ConVar.Find("mp_maxrounds")?.GetPrimitiveValue<int>() ?? 24;
+            int maxRounds = ConVar<int>.Find("mp_maxrounds")?.Value ?? 24;
             if (maxRounds <= 0) maxRounds = 24;
             int half = maxRounds / 2;
 
