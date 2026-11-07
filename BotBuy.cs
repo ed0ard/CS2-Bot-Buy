@@ -12,8 +12,8 @@ namespace BotBuyPatch;
 public sealed class BotBuyPatch : BasePlugin
 {
     public override string ModuleName        => "BotBuyPatch";
-    public override string ModuleVersion     => "1.0.14";
-    public override string ModuleAuthor      => "ed0ard";
+    public override string ModuleVersion     => "1.0.15";
+    public override string ModuleAuthor      => "ed0ard & XBribo";
     public override string ModuleDescription => "Enable bots to take more buy options";
 
     private Dictionary<int, int> _botUserIdToIndex = new();
