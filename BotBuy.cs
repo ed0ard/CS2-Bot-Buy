@@ -94,8 +94,8 @@ public sealed partial class BotBuyPatch : BasePlugin
         if (Server.MapName == "aim_rush" || Server.MapName == "rush_001")
             return HookResult.Continue;
 
-        ConVar? botLoadout = ConVar.Find("bot_loadout");
-        if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.StringValue))
+        ConVar<string>? botLoadout = ConVar<string>.Find("bot_loadout");
+        if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.Value))
             return HookResult.Continue;
 
         if (IsWarmupPeriod() || IsEconomyDisabled())
@@ -436,7 +436,7 @@ public sealed partial class BotBuyPatch : BasePlugin
 
     private static bool IsEconomyDisabled()
     {
-        return (ConVar.Find("mp_maxmoney")?.GetPrimitiveValue<int>() ?? 16000) <= 0;
+        return (ConVar<int>.Find("mp_maxmoney")?.Value ?? 16000) <= 0;
     }
 
     //----------------------------------------------------------------------------------------------
@@ -478,8 +478,8 @@ public sealed partial class BotBuyPatch : BasePlugin
                 return false;
 
             int played = gameRules.TotalRoundsPlayed;
-            int maxRounds = ConVar.Find("mp_maxrounds")?.GetPrimitiveValue<int>() ?? 24;
-            int otMaxRounds = ConVar.Find("mp_overtime_maxrounds")?.GetPrimitiveValue<int>() ?? 6;
+            int maxRounds = ConVar<int>.Find("mp_maxrounds")?.Value ?? 24;
+            int otMaxRounds = ConVar<int>.Find("mp_overtime_maxrounds")?.Value ?? 6;
             if (maxRounds <= 0) maxRounds = 24;
             if (otMaxRounds <= 0) otMaxRounds = 6;
 

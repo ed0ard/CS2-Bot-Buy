@@ -286,7 +286,7 @@ public sealed partial class BotBuyPatch
         if (price > 0)
         {
             player.InGameMoneyServices.Account += price;
-            int maxMoney = ConVar.Find("mp_maxmoney")?.GetPrimitiveValue<int>() ?? 16000;
+            int maxMoney = ConVar<int>.Find("mp_maxmoney")?.Value ?? 16000;
             if (player.InGameMoneyServices.Account > maxMoney)
                 player.InGameMoneyServices.Account = maxMoney;
             Utilities.SetStateChanged(player, "CCSPlayerController", "m_pInGameMoneyServices");
