@@ -54,6 +54,13 @@ internal static class WeaponCatalog
 
         ["weapon_negev"] = 1700,
         ["weapon_m249"] = 5200,
+
+        ["weapon_flashbang"] = 200,
+        ["weapon_smokegrenade"] = 300,
+        ["weapon_hegrenade"] = 300,
+        ["weapon_molotov"] = 400,
+        ["weapon_incgrenade"] = 500,
+        ["weapon_decoy"] = 50,
     };
 
     internal static readonly HashSet<string> Primaries = new()
@@ -93,6 +100,12 @@ internal static class WeaponCatalog
         "weapon_awp", "weapon_ssg08", "weapon_scar20", "weapon_g3sg1",
     };
 
+    internal static readonly HashSet<string> Grenades = new()
+    {
+        "weapon_flashbang", "weapon_smokegrenade", "weapon_hegrenade",
+        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
+    };
+
     internal static bool IsPrimary(string? name) => name != null && Primaries.Contains(name);
     internal static bool IsPistol(string? name) => name != null && Pistols.Contains(name);
     internal static bool IsRifle(string? name) => name != null && Rifles.Contains(name);
@@ -100,6 +113,7 @@ internal static class WeaponCatalog
     internal static bool IsShotgun(string? name) => name != null && Shotguns.Contains(name);
     internal static bool IsSniper(string? name) => name != null && Snipers.Contains(name);
     internal static bool IsAwp(string? name) => name == "weapon_awp";
+    internal static bool IsGrenade(string? name) => name != null && Grenades.Contains(name);
 
     internal static bool IsTeamLegal(string item, CsTeam team)
     {
@@ -107,10 +121,11 @@ internal static class WeaponCatalog
         {
             "weapon_ak47" or "weapon_galilar" or "weapon_sg556" or "weapon_mac10"
                 or "weapon_tec9" or "weapon_glock" or "weapon_sawedoff" or "weapon_g3sg1"
+                or "weapon_molotov"
                 => team == CsTeam.Terrorist,
             "weapon_m4a1" or "weapon_m4a1_silencer" or "weapon_aug" or "weapon_famas"
                 or "weapon_mp9" or "weapon_usp_silencer" or "weapon_hkp2000" or "weapon_fiveseven"
-                or "weapon_mag7" or "weapon_scar20" or "item_defuser"
+                or "weapon_mag7" or "weapon_scar20" or "item_defuser" or "weapon_incgrenade"
                 => team == CsTeam.CounterTerrorist,
             _ => true,
         };
@@ -175,6 +190,17 @@ internal static class WeaponCatalog
         }
         return null;
     }
+
+    internal static void SetWeaponOriginalOwner(CCSWeaponBase weapon, CCSPlayerController owner)
+    {
+        ulong ownerId = owner.SteamID;
+        if (ownerId == 0 || CoreConfig.FollowCS2ServerGuidelines) return;
+
+        weapon.OriginalOwnerXuidLow = (uint)ownerId;
+        weapon.OriginalOwnerXuidHigh = (uint)(ownerId >> 32);
+        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidLow");
+        Utilities.SetStateChanged(weapon, "CEconEntity", "m_OriginalOwnerXuidHigh");
+    }
 }
 
 public sealed partial class BotBuyPatch
@@ -207,7 +233,16 @@ public sealed partial class BotBuyPatch
         if (player.InGameMoneyServices.Account < price)
             return false;
 
-        player.GiveNamedItem(itemName);
+        if (itemName.StartsWith("weapon_"))
+        {
+            var weapon = player.GiveNamedItem<CCSWeaponBase>(itemName);
+            if (weapon == null || !weapon.IsValid) return false;
+            WeaponCatalog.SetWeaponOriginalOwner(weapon, player);
+        }
+        else
+        {
+            player.GiveNamedItem(itemName);
+        }
         if (price > 0)
         {
             player.InGameMoneyServices.Account -= price;

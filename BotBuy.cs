@@ -1,6 +1,7 @@
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
+using CounterStrikeSharp.API.Modules.Commands;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
@@ -13,9 +14,6 @@ public sealed partial class BotBuyPatch : BasePlugin
     public override string ModuleVersion => "2.0.5";
     public override string ModuleAuthor => "ed0ard";
     public override string ModuleDescription => "Team-economy buyer: pistol/eco/force/anti-eco/full-buy";
-
-    private readonly Dictionary<int, int> _botUserIdToIndex = new();
-    private int _botIndexCounter;
 
     private readonly Dictionary<int, List<string>> _prevWeapons = new();
     private readonly Dictionary<int, int> _prevMoney = new();
@@ -33,14 +31,13 @@ public sealed partial class BotBuyPatch : BasePlugin
     private int _buyEpoch;
     private Dictionary<CsTeam, BuyRound> _roundTypeByTeam = new();
 
-    [GameEventHandler]
-    public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
+    private readonly Dictionary<CsTeam, TeamTemperament> _temperament = new()
     {
-        var player = @event.Userid;
-        if (player != null && player.IsBot)
-            GetBotIndex(player);
-        return HookResult.Continue;
-    }
+        [CsTeam.Terrorist] = TeamTemperament.Balanced,
+        [CsTeam.CounterTerrorist] = TeamTemperament.Balanced,
+    };
+
+    private readonly Dictionary<int, int> _tierByUserId = new();
 
     [GameEventHandler]
     public HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
@@ -55,7 +52,7 @@ public sealed partial class BotBuyPatch : BasePlugin
     public HookResult OnPlayerDeath(EventPlayerDeath @event, GameEventInfo info)
     {
         var player = @event.Userid;
-        if (player != null && player.IsValid && player.IsBot)
+        if (player != null && player.IsValid)
             ClearPreviousInventory(player);
         return HookResult.Continue;
     }
@@ -86,17 +83,22 @@ public sealed partial class BotBuyPatch : BasePlugin
             _lossIndex[CsTeam.Terrorist] = 0;
             _lossIndex[CsTeam.CounterTerrorist] = 0;
             _lastWinner = CsTeam.None;
+            _temperament[CsTeam.Terrorist] = BotStrategy.RollTemperament(Random.Shared);
+            _temperament[CsTeam.CounterTerrorist] = BotStrategy.RollTemperament(Random.Shared);
         }
 
         var startValues = _startMoney.Values.ToList();
-        int startMedian = Median(startValues);
+        int startMedian = BotStrategy.Median(startValues);
         _pistolThisRound = IsFirstRoundOfHalf() && startMedian > 0 && startMedian <= 1200;
 
-        if (Server.MapName == "aim_rush")
+        if (Server.MapName == "aim_rush" || Server.MapName == "rush_001")
             return HookResult.Continue;
 
         ConVar? botLoadout = ConVar.Find("bot_loadout");
         if (botLoadout != null && !string.IsNullOrEmpty(botLoadout.StringValue))
+            return HookResult.Continue;
+
+        if (IsWarmupPeriod() || IsEconomyDisabled())
             return HookResult.Continue;
 
         AddTimer(0.55f, () =>
@@ -132,38 +134,56 @@ public sealed partial class BotBuyPatch : BasePlugin
         var t = players.Where(p => p.Team == CsTeam.Terrorist).ToList();
         var ct = players.Where(p => p.Team == CsTeam.CounterTerrorist).ToList();
 
-        int tMedian = t.Count == 0 ? 0 : Median(t.Select(p => p.StartMoney).ToList());
-        int ctMedian = ct.Count == 0 ? 0 : Median(ct.Select(p => p.StartMoney).ToList());
-        _pistolThisRound = IsFirstRoundOfHalf() && Math.Max(tMedian, ctMedian) <= 1200
+        int tMedian = t.Count == 0 ? 0 : BotStrategy.Median(t.Select(p => p.StartMoney).ToList());
+        int ctMedian = ct.Count == 0 ? 0 : BotStrategy.Median(ct.Select(p => p.StartMoney).ToList());
+        bool firstOfHalf = IsFirstRoundOfHalf();
+        _pistolThisRound = firstOfHalf && Math.Max(tMedian, ctMedian) <= 1200
             && Math.Max(tMedian, ctMedian) > 0;
 
-        var tPlan = ClassifyTeam(t, ct);
-        var ctPlan = ClassifyTeam(ct, t);
+        var tInputs = t.Select(s => s.ToBotInput()).ToList();
+        var ctInputs = ct.Select(s => s.ToBotInput()).ToList();
+
+        var tPlan = BotStrategy.ClassifyTeam(tInputs, ctInputs, MakeContext(CsTeam.Terrorist, firstOfHalf), Random.Shared);
+        var ctPlan = BotStrategy.ClassifyTeam(ctInputs, tInputs, MakeContext(CsTeam.CounterTerrorist, firstOfHalf), Random.Shared);
         _roundTypeByTeam[CsTeam.Terrorist] = tPlan.Round;
         _roundTypeByTeam[CsTeam.CounterTerrorist] = ctPlan.Round;
 
         Server.PrintToConsole(
-            $"[BotBuy] T={tPlan.Round} med={tPlan.Median} CT={ctPlan.Round} med={ctPlan.Median}");
+            $"[BotBuy] T={tPlan.Round}({tPlan.Temperament}) med={tPlan.Median} CT={ctPlan.Round}({ctPlan.Temperament}) med={ctPlan.Median}");
 
-        ApplyTeam(t, tPlan);
-        ApplyTeam(ct, ctPlan);
+        ApplyTeam(t, tPlan, ctPlan);
+        ApplyTeam(ct, ctPlan, tPlan);
     }
 
-    private void ApplyTeam(List<PlayerSnap> team, TeamBuyPlan plan)
+    private TeamContext MakeContext(CsTeam team, bool firstOfHalf)
     {
+        return new TeamContext
+        {
+            FirstRoundOfHalf = firstOfHalf,
+            PistolRound = _pistolThisRound,
+            LastWinner = _lastWinner,
+            LossIndex = _lossIndex.GetValueOrDefault(team),
+            Temperament = _temperament.GetValueOrDefault(team),
+        };
+    }
+
+    private void ApplyTeam(List<PlayerSnap> team, TeamBuyPlan plan, TeamBuyPlan enemyPlan)
+    {
+        int lossIndex = team.Count == 0 ? 0 : _lossIndex.GetValueOrDefault(team[0].Team);
         foreach (var snap in team
                      .Where(s => s.Player.IsBot)
                      .OrderBy(s => s.Personality == BotPersonality.Sniper ? 0 : 1))
         {
             if (!snap.Player.IsValid)
                 continue;
-            var intended = PickLoadout(snap, plan);
-            ApplyLoadout(snap.Player, intended);
+            var intended = BotStrategy.PickLoadout(snap.ToBotInput(), plan, enemyPlan, lossIndex, Random.Shared);
+            ApplyLoadout(snap.Player, intended, plan.Round);
         }
     }
 
     private List<PlayerSnap> CollectPlayers()
     {
+        _tierByUserId.Clear();
         var list = new List<PlayerSnap>();
         foreach (var player in Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller"))
         {
@@ -177,6 +197,10 @@ public sealed partial class BotBuyPatch : BasePlugin
             int startMoney = EstimateStartMoney(player, pawn);
             var (prevWeapons, _, _) = PreviousInventory(player);
             string? valveGun = WeaponCatalog.FindPrimary(pawn);
+            int tier = player.IsBot ? BotStrategy.MapSkillTier(player.PawnBotDifficulty) : 1;
+            int userId = UserIdOf(player);
+            if (userId != -1)
+                _tierByUserId[userId] = tier;
 
             list.Add(new PlayerSnap
             {
@@ -185,7 +209,8 @@ public sealed partial class BotBuyPatch : BasePlugin
                 StartMoney = startMoney,
                 LeftoverRifle = prevWeapons.Any(WeaponCatalog.IsRifle) || prevWeapons.Any(WeaponCatalog.IsAwp),
                 CurrentPrimary = valveGun,
-                Personality = PersonalityFromGun(valveGun),
+                Personality = BotStrategy.PersonalityFromGun(valveGun),
+                SkillTier = tier,
             });
         }
         return list;
@@ -240,7 +265,8 @@ public sealed partial class BotBuyPatch : BasePlugin
 
         foreach (var team in new[] { CsTeam.CounterTerrorist, CsTeam.Terrorist })
         {
-            if (_roundTypeByTeam.GetValueOrDefault(team) != BuyRound.FullBuy)
+            var round = _roundTypeByTeam.GetValueOrDefault(team);
+            if (round is not (BuyRound.FullBuy or BuyRound.Force))
                 continue;
 
             var poor = players
@@ -264,20 +290,42 @@ public sealed partial class BotBuyPatch : BasePlugin
                 if (!IsLiveCombatant(rich) || rich.InGameMoneyServices == null)
                     continue;
 
+                bool Eligible(CCSPlayerController p) =>
+                    IsLiveCombatant(p) && !gifted.Contains(p) && !HasPrimaryWeapon(p);
+
                 int given = 0;
                 while (given < 3 && poorIndex < poor.Count)
                 {
-                    var receiver = poor[poorIndex++];
-                    if (!IsLiveCombatant(receiver) || gifted.Contains(receiver) || HasPrimaryWeapon(receiver))
-                        continue;
-
                     bool allowAwp = !awpDropped && HasPrimaryWeapon(rich);
-                    string gun = PickDroppedPrimary(team, rich.InGameMoneyServices.Account, allowAwp);
+                    string? gun = BotStrategy.PickDroppedPrimary(team, rich.InGameMoneyServices.Account, allowAwp, Random.Shared);
+                    if (gun == null)
+                        break;
                     int price = WeaponCatalog.PriceOf(gun);
                     if (price <= 0 || rich.InGameMoneyServices.Account < price)
                         break;
 
-                    receiver.GiveNamedItem(gun);
+                    CCSPlayerController receiver;
+                    if (WeaponCatalog.IsAwp(gun))
+                    {
+                        // The team awp goes to the highest-skill eligible receiver in line.
+                        var candidate = poor.Skip(poorIndex).Where(Eligible).OrderByDescending(TierOf).FirstOrDefault();
+                        if (candidate == null)
+                            break;
+                        poor.Remove(candidate);
+                        receiver = candidate;
+                    }
+                    else
+                    {
+                        receiver = poor[poorIndex++];
+                    }
+
+                    if (!Eligible(receiver))
+                        continue;
+
+                    var weapon = receiver.GiveNamedItem<CCSWeaponBase>(gun);
+                    if (weapon == null || !weapon.IsValid)
+                        continue;
+                    WeaponCatalog.SetWeaponOriginalOwner(weapon, rich);
                     gifted.Add(receiver);
 
                     rich.InGameMoneyServices.Account -= price;
@@ -295,15 +343,10 @@ public sealed partial class BotBuyPatch : BasePlugin
         }
     }
 
-    private static string PickDroppedPrimary(CsTeam team, int money, bool allowAwp)
+    private int TierOf(CCSPlayerController player)
     {
-        int awpPrice = WeaponCatalog.PriceOf("weapon_awp");
-        if (allowAwp && awpPrice > 0 && money >= awpPrice)
-            return "weapon_awp";
-
-        if (team == CsTeam.CounterTerrorist)
-            return Random.Shared.Next(2) == 0 ? "weapon_m4a1_silencer" : "weapon_m4a1";
-        return "weapon_ak47";
+        int userId = UserIdOf(player);
+        return userId != -1 && _tierByUserId.TryGetValue(userId, out int tier) ? tier : 1;
     }
 
     private static bool TeamHasAwp(List<CCSPlayerController> players, CsTeam team)
@@ -365,13 +408,72 @@ public sealed partial class BotBuyPatch : BasePlugin
         }
     }
 
+    private static CCSGameRules? GetGameRules()
+    {
+        try
+        {
+            return Utilities
+                .FindAllEntitiesByDesignerName<CCSGameRulesProxy>("cs_gamerules")
+                .FirstOrDefault()?.GameRules;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool IsWarmupPeriod()
+    {
+        try
+        {
+            return GetGameRules()?.WarmupPeriod == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsEconomyDisabled()
+    {
+        return (ConVar.Find("mp_maxmoney")?.GetPrimitiveValue<int>() ?? 16000) <= 0;
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Marks natively-purchased bot weapons with their original owner so drops show attribution.
+    [GameEventHandler]
+    public HookResult OnItemPurchase(EventItemPurchase @event, GameEventInfo info)
+    {
+        var player = @event.Userid;
+        if (player == null || !player.IsValid || !player.IsBot ||
+            player.SteamID == 0 || CoreConfig.FollowCS2ServerGuidelines)
+            return HookResult.Continue;
+
+        var weapons = player.PlayerPawn.Value?.WeaponServices?.MyWeapons;
+        if (weapons == null) return HookResult.Continue;
+
+        string weaponName = @event.Weapon.StartsWith("weapon_")
+            ? @event.Weapon : "weapon_" + @event.Weapon;
+        foreach (var handle in weapons)
+        {
+            var weapon = handle.Value;
+            if (weapon == null || !weapon.IsValid || weapon.DesignerName != weaponName) continue;
+
+            var csWeapon = weapon.As<CCSWeaponBase>();
+            // Do not claim a previously owned weapon when handling native purchases.
+            if (csWeapon.PrevOwner.IsValid || csWeapon.OriginalOwnerXuidLow != 0 ||
+                csWeapon.OriginalOwnerXuidHigh != 0) continue;
+
+            WeaponCatalog.SetWeaponOriginalOwner(csWeapon, player);
+        }
+        return HookResult.Continue;
+    }
+
     private bool IsFirstRoundOfHalf()
     {
         try
         {
-            var gameRules = Utilities
-                .FindAllEntitiesByDesignerName<CCSGameRulesProxy>("cs_gamerules")
-                .FirstOrDefault()?.GameRules;
+            var gameRules = GetGameRules();
             if (gameRules == null)
                 return false;
 
@@ -395,18 +497,9 @@ public sealed partial class BotBuyPatch : BasePlugin
         }
     }
 
-    private int GetBotIndex(CCSPlayerController player)
+    private static int UserIdOf(CCSPlayerController player)
     {
-        if (!player.IsValid || !player.IsBot)
-            return -1;
-        int userId = player.UserId ?? -1;
-        if (userId == -1)
-            return -1;
-        if (_botUserIdToIndex.TryGetValue(userId, out int idx))
-            return idx;
-        int newIdx = ++_botIndexCounter;
-        _botUserIdToIndex[userId] = newIdx;
-        return newIdx;
+        return player.IsValid ? player.UserId ?? -1 : -1;
     }
 
     private static bool IsLiveCombatant(CCSPlayerController? player)
@@ -428,15 +521,12 @@ public sealed partial class BotBuyPatch : BasePlugin
 
     private void RemoveBot(CCSPlayerController player)
     {
-        int userId = player.UserId ?? -1;
+        int userId = UserIdOf(player);
         if (userId == -1)
             return;
-        if (_botUserIdToIndex.Remove(userId, out int idx))
-        {
-            _prevWeapons.Remove(idx);
-            _prevMoney.Remove(idx);
-            _prevArmor.Remove(idx);
-        }
+        _prevWeapons.Remove(userId);
+        _prevMoney.Remove(userId);
+        _prevArmor.Remove(userId);
         _startMoney.Remove(userId);
     }
 
@@ -452,30 +542,28 @@ public sealed partial class BotBuyPatch : BasePlugin
 
         foreach (var player in Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller"))
         {
-            if (!player.IsValid || !player.IsBot)
+            if (!player.IsValid)
                 continue;
-            int idx = GetBotIndex(player);
-            if (idx == -1)
+            int userId = UserIdOf(player);
+            if (userId == -1)
                 continue;
             var pawn = player.PlayerPawn.Value;
             if (pawn == null || !pawn.IsValid)
                 continue;
 
-            _prevWeapons[idx] = WeaponCatalog.Weapons(pawn).ToList();
-            _prevMoney[idx] = player.InGameMoneyServices?.Account ?? 0;
-            _prevArmor[idx] = pawn.ArmorValue;
+            _prevWeapons[userId] = WeaponCatalog.Weapons(pawn).ToList();
+            _prevMoney[userId] = player.InGameMoneyServices?.Account ?? 0;
+            _prevArmor[userId] = pawn.ArmorValue;
         }
     }
 
     private void ClearPreviousInventory(CCSPlayerController player)
     {
-        if (!player.IsValid || !player.IsBot)
+        int userId = UserIdOf(player);
+        if (userId == -1)
             return;
-        int idx = GetBotIndex(player);
-        if (idx == -1)
-            return;
-        _prevWeapons.Remove(idx);
-        _prevArmor.Remove(idx);
+        _prevWeapons.Remove(userId);
+        _prevArmor.Remove(userId);
     }
 
     private (List<string> Weapons, int Money, int Armor) PreviousInventory(CCSPlayerController player)
@@ -483,19 +571,65 @@ public sealed partial class BotBuyPatch : BasePlugin
         var weapons = new List<string>();
         int money = 0;
         int armor = 0;
-        if (!player.IsValid || !player.IsBot)
-            return (weapons, money, armor);
-        int idx = GetBotIndex(player);
-        if (idx == -1)
+        int userId = UserIdOf(player);
+        if (userId == -1)
             return (weapons, money, armor);
         if (IsFirstRoundOfHalf())
             return (weapons, money, armor);
-        if (_prevWeapons.TryGetValue(idx, out var prev))
+        if (_prevWeapons.TryGetValue(userId, out var prev))
             weapons = prev;
-        if (_prevMoney.TryGetValue(idx, out int m))
+        if (_prevMoney.TryGetValue(userId, out int m))
             money = m;
-        if (_prevArmor.TryGetValue(idx, out int a))
+        if (_prevArmor.TryGetValue(userId, out int a))
             armor = a;
         return (weapons, money, armor);
+    }
+
+    [ConsoleCommand("css_botbuy", "BotBuy debug commands")]
+    public void OnBotBuyCommand(CCSPlayerController? caller, CommandInfo command)
+    {
+        if (command.GetArg(1) == "diffcheck")
+        {
+            DiffCheck(command);
+            return;
+        }
+        command.ReplyToCommand("[BotBuy] usage: css_botbuy diffcheck");
+    }
+
+    private void DiffCheck(CommandInfo command)
+    {
+        command.ReplyToCommand(
+            $"[BotBuy] plans T={_roundTypeByTeam.GetValueOrDefault(CsTeam.Terrorist)}({_temperament[CsTeam.Terrorist]})" +
+            $" CT={_roundTypeByTeam.GetValueOrDefault(CsTeam.CounterTerrorist)}({_temperament[CsTeam.CounterTerrorist]})" +
+            $" lossT={_lossIndex[CsTeam.Terrorist]} lossCT={_lossIndex[CsTeam.CounterTerrorist]}");
+
+        List<CCSPlayerController> bots;
+        try
+        {
+            bots = Utilities.FindAllEntitiesByDesignerName<CCSPlayerController>("cs_player_controller")
+                .Where(p => p.IsValid && p.IsBot && p.Connected == PlayerConnectedState.Connected)
+                .OrderBy(p => (int)p.Team)
+                .ToList();
+        }
+        catch (Exception)
+        {
+            command.ReplyToCommand("[BotBuy] entity system not ready, retry after map load");
+            return;
+        }
+
+        if (bots.Count == 0)
+        {
+            command.ReplyToCommand("[BotBuy] no bots connected");
+            return;
+        }
+
+        foreach (var p in bots)
+        {
+            int raw = p.PawnBotDifficulty;
+            int tier = BotStrategy.MapSkillTier(raw);
+            command.ReplyToCommand(
+                $"[BotBuy] {p.PlayerName} team={p.Team} rawDifficulty={raw} tier={tier}" +
+                $" money={p.InGameMoneyServices?.Account ?? -1}");
+        }
     }
 }
