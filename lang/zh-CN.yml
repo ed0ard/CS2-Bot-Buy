@@ -1,0 +1,7 @@
+# {other} 是接枪的队友；{self} 是发言的 bot。
+drop_weapon:
+  - "拿去用，{other}"
+  - "给你发枪，{other}"
+  - "给你把枪，{other}"
+  - "多的经济给你，{other}"
+  - "你会需要这个的，{other}"
